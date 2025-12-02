@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-import { Sparkles, Users, RotateCcw, Quote, Download, Send, X, BookOpen, Home } from 'lucide-react';
+import { Sparkles, Users, RotateCcw, Quote, Download, Send, X, Home } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 
@@ -50,7 +50,6 @@ const isFirebaseReady = true;
 
 
 
-const REAL_TEMPLATE_BASE64 = "/year-word-2025.jpg";
 
 
 
@@ -516,7 +515,7 @@ const ResultView = ({ myWord, onDownload, onContribute, onRetry }: any) => (
 
 
 
-const ContributeView = ({ word, reason, setWord, setReason, onSubmit, onClose, onSkip }: any) => {
+const ContributeView = ({ word, reason, setWord, setReason, onSubmit, onClose, onSkip, isSubmitting }: any) => {
   const isComposing = useRef(false);
   // V50: Toggle placeholder on focus
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -570,7 +569,13 @@ const ContributeView = ({ word, reason, setWord, setReason, onSubmit, onClose, o
         </div>
         <div className="flex gap-4 pt-2 font-serif justify-center">
           <button onClick={onSkip} className="px-4 py-4 text-stone-400 hover:text-stone-600 transition-colors text-xs tracking-widest whitespace-nowrap">一起回顧彼此的 2025 專屬文字</button>
-          <button onClick={onSubmit} disabled={!word.trim()} className={`px-8 py-4 bg-amber-900 text-white rounded-xl flex items-center justify-center gap-2 text-sm tracking-widest hover:bg-amber-800 shadow-lg transition-all hover:-translate-y-0.5 duration-300 ${(!word.trim()) ? 'opacity-50 cursor-not-allowed' : ''}`}>確認發布 <Send size={16} /></button>
+          <button 
+            onClick={onSubmit} 
+            disabled={!word.trim() || isSubmitting} 
+            className={`px-8 py-4 bg-amber-900 text-white rounded-xl flex items-center justify-center gap-2 text-sm tracking-widest hover:bg-amber-800 shadow-lg transition-all hover:-translate-y-0.5 duration-300 ${(!word.trim() || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {isSubmitting ? '發布中...' : '確認發布'} <Send size={16} />
+          </button>
         </div>
       </div>
     </PageWrapper>
@@ -787,8 +792,19 @@ const { generateAndDownload } = useCanvasGenerator();
 
 
 
-useEffect(() => { if(!isFirebaseReady || !auth) return; const init = async () => { if(typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth); }; init(); onAuthStateChanged(auth, setUser); }, []);
-
+useEffect(() => { 
+  if(!isFirebaseReady || !auth) return; 
+  const init = async () => { 
+    const initialAuthToken = typeof window !== 'undefined' && (window as any).__initial_auth_token;
+    if(initialAuthToken) {
+      await signInWithCustomToken(auth, initialAuthToken);
+    } else {
+      await signInAnonymously(auth);
+    }
+  }; 
+  init(); 
+  onAuthStateChanged(auth, setUser); 
+}, []);
 
 useEffect(() => {
 
@@ -830,29 +846,25 @@ setView('result');
 
 
 const handleSubmit = async () => {
-
-if (!userWordInput.trim()) return;
-
-setIsSubmitting(true);
-
-try {
-
-const wordToSave = userWordInput.trim().substring(0, 1);
-
-if (isFirebaseReady && db && user) {
-
-await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'user_words_2025_v50'), {
-
-word: wordToSave, reason: userReasonInput.trim().substring(0, 200), timestamp: serverTimestamp(), userId: user.uid, isSystemGenerated: false
-
-});
-
-}
-
-setView('gallery');
-
-} catch (e) { alert("Error"); } finally { setIsSubmitting(false); }
-
+  if (!userWordInput.trim() || isSubmitting) return;  // 加上 isSubmitting 檢查
+  setIsSubmitting(true);
+  try {
+    const wordToSave = userWordInput.trim().substring(0, 1);
+    if (isFirebaseReady && db && user) {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'user_words_2025_v50'), {
+        word: wordToSave, 
+        reason: userReasonInput.trim().substring(0, 200), 
+        timestamp: serverTimestamp(), 
+        userId: user.uid, 
+        isSystemGenerated: false
+      });
+    }
+    setView('gallery');
+  } catch (e) { 
+    alert("Error"); 
+  } finally { 
+    setIsSubmitting(false); 
+  }
 };
 
 
@@ -912,9 +924,9 @@ body { font-family: 'Noto Sans TC', sans-serif; margin: 0; }
 
 {view === 'drawing' && <DrawingView />}
 
-{view === 'result' && <ResultView myWord={myWord} onDownload={() => generateAndDownload(myWord?.char, myWord?.meaning)} onContribute={() => setView('contribute')} onRetry={handleDraw} />}
+{view === 'result' && <ResultView myWord={myWord} onDownload={() => generateAndDownload(myWord?.char || '', myWord?.meaning || '')} onContribute={() => setView('contribute')} onRetry={handleDraw} />}
 
-{view === 'contribute' && <ContributeView word={userWordInput} reason={userReasonInput} setWord={setUserWordInput} setReason={setUserReasonInput} onSubmit={handleSubmit} onClose={() => setView('result')} onSkip={() => setView('gallery')} />}
+{view === 'contribute' && <ContributeView word={userWordInput} reason={userReasonInput} setWord={setUserWordInput} setReason={setUserReasonInput} onSubmit={handleSubmit} onClose={() => setView('result')} onSkip={() => setView('gallery')} isSubmitting={isSubmitting} />}
 
 {view === 'gallery' && <GalleryView words={communityWords} myWordData={myWordData} totalCount={totalCount} onHome={() => setView('landing')} userUid={user?.uid} />}
 
